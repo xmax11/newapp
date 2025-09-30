@@ -1,4 +1,4 @@
-name: Docker Build and Push
+name: Docker Build and Push to EC2
 on: 
   push:
     branches:
