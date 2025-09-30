@@ -40,7 +40,7 @@ jobs:
           push: true
 
       # Deploy to EC2
-      - name: Deploy on EC2
+      - name: Deploy to AWS EC2
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -48,8 +48,6 @@ jobs:
           key: ${{ secrets.EC2_KEY }}
           script: |
             docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
-            docker pull ${{ secrets.DOCKER_USERNAME }}/backend:latest
-            docker pull ${{ secrets.DOCKER_USERNAME }}/frontend:latest
-
-            # docker-compose.yml must already exist on EC2
+            cd /home/ubuntu/app
+            docker compose pull
             docker compose -f /home/ubuntu/docker-compose.yml up -d
