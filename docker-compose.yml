@@ -1,13 +1,13 @@
 services:
   backend:
-    image: your-dockerhub-username/backend:latest
+    image: xmax11/backend:latest
     ports:
       - "5000:5000"
     depends_on:
       - mongo
 
   frontend:
-    image: your-dockerhub-username/frontend:latest
+    image: xmax11/frontend:latest
     ports:
       - "3000:3000"
     depends_on:
