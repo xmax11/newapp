@@ -43,9 +43,10 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_KEY }}
-          source: "docker-compose.yml"
-          target: "/home/ubuntu/app/"
-          overwrite: true   # ✅ overwrite enable
+          source: "docker-compose.yml"   # local file
+          target: "/home/ubuntu/app/"    # EC2 folder
+          overwrite: true                # overwrite existing file
+
 
 
       - name: Deploy on EC2
