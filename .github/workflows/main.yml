@@ -1,12 +1,12 @@
-name: Docker Build and Push to EC2 in fgf
+name: Docker Build and Deploy
 
-on: 
+on:
   push:
     branches:
       - main
 
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -21,16 +21,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Copy docker-compose.yml
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_KEY }}
-          source: "docker-compose.yml"
-          target: "/home/ubuntu/"
-
-
+      # Build & Push Backend
       - name: Build and push backend
         uses: docker/build-push-action@v2
         with:
@@ -39,7 +30,8 @@ jobs:
           tags: ${{ secrets.DOCKER_USERNAME }}/backend:latest
           push: true
 
-      - name: Build and push frontend 
+      # Build & Push Frontend
+      - name: Build and push frontend
         uses: docker/build-push-action@v2
         with:
           context: ./frontend
@@ -47,15 +39,17 @@ jobs:
           tags: ${{ secrets.DOCKER_USERNAME }}/frontend:latest
           push: true
 
-      - name: Deploy to AWS EC2
+      # Deploy to EC2
+      - name: Deploy on EC2
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_KEY }}
           script: |
-            cd /home/ubuntu
             docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
             docker pull ${{ secrets.DOCKER_USERNAME }}/backend:latest
             docker pull ${{ secrets.DOCKER_USERNAME }}/frontend:latest
-            docker compose up -d
+
+            # docker-compose.yml must already exist on EC2
+            docker compose -f /home/ubuntu/docker-compose.yml up -d
