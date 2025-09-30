@@ -22,10 +22,12 @@ services:
       - backend
 
   mongo:
-    image: mongo:latest
+    image: mongo:6.0   # ✅ use a specific version from Docker Hub
+    restart: always
     ports:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
+
 volumes:
   mongo-data:
