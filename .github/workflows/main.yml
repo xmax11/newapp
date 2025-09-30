@@ -2,13 +2,13 @@ name: Docker Build and Deploy
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
+
       - name: Checkout code
         uses: actions/checkout@v2
 
@@ -21,7 +21,6 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Build & Push Backend
       - name: Build and push backend
         uses: docker/build-push-action@v2
         with:
@@ -30,7 +29,6 @@ jobs:
           tags: ${{ secrets.DOCKER_USERNAME }}/backend:latest
           push: true
 
-      # Build & Push Frontend
       - name: Build and push frontend
         uses: docker/build-push-action@v2
         with:
@@ -39,15 +37,68 @@ jobs:
           tags: ${{ secrets.DOCKER_USERNAME }}/frontend:latest
           push: true
 
-      # Deploy to EC2
-      - name: Deploy to AWS EC2
+      # Copy docker-compose.yml to EC2
+      - name: Copy docker-compose.yml to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_KEY }}
+          port: ${{ secrets.EC2_PORT || '22' }}
+          source: "docker-compose.yml"
+          target: "/home/${{ secrets.EC2_USERNAME }}/app/docker-compose.yml"
+
+      # Deploy commands on EC2 (install compose if missing, login to docker, pull & up)
+      - name: Deploy to EC2 (pull & run)
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_KEY }}
+          port: ${{ secrets.EC2_PORT || '22' }}
           script: |
-            docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
-            cd /home/ubuntu/app
-            docker compose pull
-            docker compose -f /home/ubuntu/docker-compose.yml up -d
+            set -e
+
+            # create app dir if missing and set permissions
+            sudo mkdir -p /home/${{ secrets.EC2_USERNAME }}/app
+            sudo chown -R $USER:$USER /home/${{ secrets.EC2_USERNAME }}/app
+
+            # ensure docker available
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "Docker not found. Installing Docker..."
+              sudo apt-get update
+              sudo apt-get install -y ca-certificates curl gnupg lsb-release
+              curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+              echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+              sudo apt-get update
+              sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+            fi
+
+            # install docker compose plugin if missing
+            if ! docker compose version >/dev/null 2>&1; then
+              echo "Installing docker compose plugin..."
+              sudo apt-get update
+              sudo apt-get install -y docker-compose-plugin || true
+              if ! docker compose version >/dev/null 2>&1; then
+                sudo curl -L "https://github.com/docker/compose/releases/download/v2.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+                sudo chmod +x /usr/local/bin/docker-compose
+                # alias docker compose to docker-compose fallback if needed (optional)
+              fi
+            fi
+
+            # Allow ubuntu user to use docker without sudo (this won't apply for current session; we still use sudo below)
+            sudo usermod -aG docker $USER || true
+
+            # Login to Docker Hub using password-stdin (safer)
+            echo "${{ secrets.DOCKER_PASSWORD }}" | sudo docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+            # Ensure compose file exists at target path
+            if [ ! -f "/home/${{ secrets.EC2_USERNAME }}/app/docker-compose.yml" ]; then
+              echo "docker-compose.yml not found at /home/${{ secrets.EC2_USERNAME }}/app/docker-compose.yml"
+              exit 1
+            fi
+
+            # Pull images and bring up (use sudo to avoid socket permission issues)
+            cd /home/${{ secrets.EC2_USERNAME }}/app
+            sudo docker compose pull
+            sudo docker compose -f /home/${{ secrets.EC2_USERNAME }}/app/docker-compose.yml up -d --remove-orphans
